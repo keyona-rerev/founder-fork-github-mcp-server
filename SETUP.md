@@ -50,14 +50,31 @@ Fork this repository to your own GitHub account (click **Fork** at the top right
 
 ---
 
-## Step 3 — Deploy to Railway
+## Step 3 — Generate your auth token
+
+Your Railway URL will be public. Without a shared secret, anyone who has the URL can use your MCP server — and it holds a GitHub token with read and write access to your repos. This step is required, and you need the token before you deploy.
+
+Generate a random token:
+```
+openssl rand -hex 32
+```
+(On Windows, run this in Git Bash or WSL. Any long random string works.)
+
+Copy it somewhere you can get to it in the next two steps — you'll paste it into Railway in Step 4 and into your Claude connector URL in Step 5.
+
+**Keep this token private.** Anyone with it can use your MCP server as if they were you. If it's ever exposed — pasted into a chat, committed to a repo, shared in a screenshot — generate a new one, update the Railway variable, and update your connector URL.
+
+---
+
+## Step 4 — Deploy to Railway
 
 1. Go to **railway.app** → New Project → Deploy from GitHub repo
 2. Select your forked repo
 3. Railway will detect the Dockerfile automatically
-4. In **Variables**, add:
+4. In **Variables**, add all four:
    ```
    GITHUB_TOKEN=your_fine_grained_token_here
+   MCP_AUTH_TOKEN=your_generated_token_from_step_3
    TRANSPORT=http
    PORT=8080
    ```
@@ -66,26 +83,7 @@ Fork this repository to your own GitHub account (click **Fork** at the top right
 
 Your URL will be something like: `https://your-repo-name-production.up.railway.app`
 
----
-
-## Step 4 — Secure your server with an auth token
-
-Your Railway URL is public. Without a shared secret, anyone who has the URL can use your MCP server — and it holds a GitHub token with read and write access to your repos. This step is required.
-
-1. Generate a random token:
-   ```
-   openssl rand -hex 32
-   ```
-   (On Windows, run this in Git Bash or WSL. Any long random string works.)
-
-2. In Railway → your service → **Variables**, add:
-   ```
-   MCP_AUTH_TOKEN=your_generated_token_here
-   ```
-
-3. Save. Railway will redeploy automatically. If `MCP_AUTH_TOKEN` is missing, the server will refuse to start — that's intentional, so the server is never running unprotected.
-
-**Keep this token private.** Anyone with it can use your MCP server as if they were you. If it's ever exposed — pasted into a chat, committed to a repo, shared in a screenshot — generate a new one, update the Railway variable, and update your connector URL.
+**If the deploy fails its healthcheck**, check that `MCP_AUTH_TOKEN` is set. The server refuses to start without it — that's intentional, so it's never running unprotected — but the reason only appears in the Railway deploy logs. Add the variable and Railway will redeploy automatically.
 
 ---
 
@@ -95,7 +93,7 @@ Your Railway URL is public. Without a shared secret, anyone who has the URL can 
 2. Click **Add custom connector** (or "Add MCP server")
 3. Enter your Railway URL with your token appended:
    ```
-   https://your-app.up.railway.app/mcp?key=your_generated_token_here
+   https://your-app.up.railway.app/mcp?key=your_generated_token_from_step_3
    ```
 4. Save — the connector should show the full list of tools
 
@@ -125,7 +123,7 @@ Should return:
 {"error": "Forbidden"}
 ```
 
-If you get `{"status": "ok", ...}` there instead, the auth token is not set — go back to Step 4.
+If you get `{"status": "ok", ...}` there instead, the auth token is not set — go back to Step 4 and check your Railway variables.
 
 ---
 
