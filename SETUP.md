@@ -4,27 +4,9 @@
 
 A custom MCP server that connects Claude to your GitHub account via the GitHub REST API. Runs on Railway using SSE/HTTP transport, same pattern as your other MCP servers.
 
-**Tools included:**
-- `github_list_repos` — list your repos
-- `github_get_repo` — get detailed repo info
-- `github_get_file` — read any file from any repo
-- `github_list_directory` — browse repo directory structure
-- `github_get_tree` — get full recursive file tree
-- `github_create_or_update_file` — create or edit files and commit
-- `github_list_commits` — list commits on a branch
-- `github_list_branches` — list branches
-- `github_list_issues` — list issues (filtered by state, label, assignee)
-- `github_get_issue` — read a specific issue with body
-- `github_create_issue` — create new issues
-- `github_update_issue` — update title, body, state, labels
-- `github_add_issue_comment` — comment on issues/PRs
-- `github_list_prs` — list pull requests
-- `github_get_pr` — read PR details and diff stats
-- `github_merge_pr` — merge a pull request
-- `github_search_code` — search code across repos
-- `github_search_repos` — search repositories
-- `github_search_issues` — search issues and PRs
-- `github_get_me` — get your authenticated user profile
+Once connected, Claude can read and write files, browse repos, and manage issues and pull requests — 20 tools in all. The full list is at the end of this file.
+
+**Setup is five steps, then a verification step.** Follow them in order — Step 3 produces a token that Steps 4 and 5 both need.
 
 ---
 
@@ -60,6 +42,11 @@ openssl rand -hex 32
 ```
 (On Windows, run this in Git Bash or WSL. Any long random string works.)
 
+You'll get something like:
+```
+7f3a9c1e4b8d05a2f6e93c7b104d8fa25e0b6c39d7148af52b93e6c01da874f2
+```
+
 Copy it somewhere you can get to it in the next two steps — you'll paste it into Railway in Step 4 and into your Claude connector URL in Step 5.
 
 **Keep this token private.** Anyone with it can use your MCP server as if they were you. If it's ever exposed — pasted into a chat, committed to a repo, shared in a screenshot — generate a new one, update the Railway variable, and update your connector URL.
@@ -73,7 +60,7 @@ Copy it somewhere you can get to it in the next two steps — you'll paste it in
 3. Railway will detect the Dockerfile automatically
 4. In **Variables**, add all four:
    ```
-   GITHUB_TOKEN=your_fine_grained_token_here
+   GITHUB_TOKEN=your_fine_grained_token_from_step_1
    MCP_AUTH_TOKEN=your_generated_token_from_step_3
    TRANSPORT=http
    PORT=8080
@@ -81,7 +68,10 @@ Copy it somewhere you can get to it in the next two steps — you'll paste it in
 5. In **Settings → Networking**, generate a public domain
 6. Wait for build to complete (2-3 min) — health check at `/health` confirms it's live
 
-Your URL will be something like: `https://your-repo-name-production.up.railway.app`
+**Copy your Railway domain** — you need it for Step 5 and Step 6. It'll look something like:
+```
+github-mcp-server-production-4abf.up.railway.app
+```
 
 **If the deploy fails its healthcheck**, check that `MCP_AUTH_TOKEN` is set. The server refuses to start without it — that's intentional, so it's never running unprotected — but the reason only appears in the Railway deploy logs. Add the variable and Railway will redeploy automatically.
 
@@ -91,39 +81,77 @@ Your URL will be something like: `https://your-repo-name-production.up.railway.a
 
 1. Go to **claude.ai → Settings → Connectors**
 2. Click **Add custom connector** (or "Add MCP server")
-3. Enter your Railway URL with your token appended:
+3. Enter your Railway domain from Step 4, followed by `/mcp?key=` and your token from Step 3:
    ```
-   https://your-app.up.railway.app/mcp?key=your_generated_token_from_step_3
+   https://your-railway-domain.up.railway.app/mcp?key=your_generated_token
+   ```
+   Filled in, that looks like:
+   ```
+   https://github-mcp-server-production-4abf.up.railway.app/mcp?key=7f3a9c1e4b8d05a2f6e93c7b104d8fa25e0b6c39d7148af52b93e6c01da874f2
    ```
 4. Save — the connector should show the full list of tools
 
 ---
 
-## Verify It's Working
+## Step 6 — Verify it's working
 
-Test the health endpoint in your browser:
+Three checks. The first two take a browser; the third takes a Claude conversation.
+
+### 6a. Health endpoint
+
+Open this in your browser, swapping in your own Railway domain from Step 4:
 ```
-https://your-app.up.railway.app/health
+https://your-railway-domain.up.railway.app/health
 ```
 
-Should return:
+Filled in:
+```
+https://github-mcp-server-production-4abf.up.railway.app/health
+```
+
+No key needed for this one. It should return:
 ```json
 {"status": "ok", "server": "github-mcp-server", "version": "1.0.0"}
 ```
 
 `/health` is intentionally left open so Railway's healthcheck can reach it — it exposes no data and runs no tools.
 
-To confirm the auth gate is live, open your `/mcp` URL **without** the key:
+### 6b. Auth gate
+
+Now open your `/mcp` URL **without** the key:
 ```
-https://your-app.up.railway.app/mcp
+https://your-railway-domain.up.railway.app/mcp
 ```
 
-Should return:
+It should return:
 ```json
 {"error": "Forbidden"}
 ```
 
-If you get `{"status": "ok", ...}` there instead, the auth token is not set — go back to Step 4 and check your Railway variables.
+That means the gate is live. If you get `{"status": "ok", ...}` here instead, your server is running unprotected — go back to Step 4 and confirm `MCP_AUTH_TOKEN` is set in Railway Variables.
+
+### 6c. Full test in Claude
+
+Start a **new conversation** in Claude and paste this in:
+
+> Using my GitHub MCP connector, run these three tool calls and tell me exactly what each one returns:
+>
+> 1. `github_get_me` — which GitHub account am I authenticated as?
+> 2. `github_list_repos` — how many repos come back on the first page?
+> 3. `github_get_repo` for one of the repos from that list — does it return real metadata?
+>
+> If any of them fail, show me the exact error message instead of working around it.
+
+**What a pass looks like:** Claude names your GitHub username, returns a real count of your repos, and returns real metadata for the repo you picked — no errors.
+
+**What a failure looks like, and what it means:**
+
+| What you see | What's wrong |
+|---|---|
+| `403` / `Forbidden` | The key in your connector URL doesn't match `MCP_AUTH_TOKEN` in Railway. Re-copy it — a truncated paste is the usual cause. |
+| Connector shows no tools, or "tool not found" | The connector URL is wrong or the server isn't running. Re-check 6a, then the URL format in Step 5. |
+| Tools run but GitHub calls fail with `401` / `Bad credentials` | Your `GITHUB_TOKEN` is wrong or expired. Regenerate it (Step 1) and update the Railway variable. |
+| Wrong GitHub account returned | `GITHUB_TOKEN` belongs to a different account than you expected. |
 
 ---
 
@@ -150,3 +178,39 @@ If you get `{"status": "ok", ...}` there instead, the auth token is not set — 
 - `github_search_code` requires the repo to be indexed by GitHub (public repos index faster)
 - When updating an existing file with `github_create_or_update_file`, you must first get the file's SHA using `github_get_file` and pass it as the `sha` parameter
 - Rate limit: GitHub allows 5,000 API requests/hour for authenticated users
+
+---
+
+## Tools Included
+
+Reference list of everything Claude can do once the connector is live.
+
+**Repos and files**
+- `github_list_repos` — list your repos
+- `github_get_repo` — get detailed repo info
+- `github_get_file` — read any file from any repo
+- `github_list_directory` — browse repo directory structure
+- `github_get_tree` — get full recursive file tree
+- `github_create_or_update_file` — create or edit files and commit
+- `github_list_commits` — list commits on a branch
+- `github_list_branches` — list branches
+
+**Issues**
+- `github_list_issues` — list issues (filtered by state, label, assignee)
+- `github_get_issue` — read a specific issue with body
+- `github_create_issue` — create new issues
+- `github_update_issue` — update title, body, state, labels
+- `github_add_issue_comment` — comment on issues/PRs
+
+**Pull requests**
+- `github_list_prs` — list pull requests
+- `github_get_pr` — read PR details and diff stats
+- `github_merge_pr` — merge a pull request
+
+**Search**
+- `github_search_code` — search code across repos
+- `github_search_repos` — search repositories
+- `github_search_issues` — search issues and PRs
+
+**Account**
+- `github_get_me` — get your authenticated user profile
