@@ -11,10 +11,11 @@ You deploy it to your own Railway account under your own GitHub token, so your c
 Short version:
 
 1. Create a fine-grained GitHub personal access token
-2. Fork this repo
-3. Generate an auth token (`openssl rand -hex 32`)
+2. Fork this repo (already forked it? sync your fork first)
+3. Generate an auth token — a new random string you invent, **not** your GitHub token (`openssl rand -hex 32`)
 4. Deploy to Railway with both tokens as variables
 5. Add `https://your-app.up.railway.app/mcp?key=your-auth-token` as a custom connector in Claude
+6. Verify — `/mcp` without the key should return `403 Forbidden`, with the key should return `ok`
 
 ## What Claude can do once it's connected
 
@@ -24,6 +25,8 @@ Short version:
 - Create, read, update, and comment on issues
 - List, read, and merge pull requests
 - Search code, repos, and issues across your account
+
+Claude shows these as 15 read-only tools and 5 write/delete tools, and lets you require approval per tool. Worth gating the write ones.
 
 ## Security
 
