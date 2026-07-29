@@ -68,11 +68,35 @@ Your URL will be something like: `https://your-repo-name-production.up.railway.a
 
 ---
 
-## Step 4 — Connect to Claude
+## Step 4 — Secure your server with an auth token
+
+Your Railway URL is public. Without a shared secret, anyone who has the URL can use your MCP server — and it holds a GitHub token with read and write access to your repos. This step is required.
+
+1. Generate a random token:
+   ```
+   openssl rand -hex 32
+   ```
+   (On Windows, run this in Git Bash or WSL. Any long random string works.)
+
+2. In Railway → your service → **Variables**, add:
+   ```
+   MCP_AUTH_TOKEN=your_generated_token_here
+   ```
+
+3. Save. Railway will redeploy automatically. If `MCP_AUTH_TOKEN` is missing, the server will refuse to start — that's intentional, so the server is never running unprotected.
+
+**Keep this token private.** Anyone with it can use your MCP server as if they were you. If it's ever exposed — pasted into a chat, committed to a repo, shared in a screenshot — generate a new one, update the Railway variable, and update your connector URL.
+
+---
+
+## Step 5 — Connect to Claude
 
 1. Go to **claude.ai → Settings → Connectors**
 2. Click **Add custom connector** (or "Add MCP server")
-3. Enter your Railway URL: `https://your-app.up.railway.app/mcp`
+3. Enter your Railway URL with your token appended:
+   ```
+   https://your-app.up.railway.app/mcp?key=your_generated_token_here
+   ```
 4. Save — the connector should show the full list of tools
 
 ---
@@ -88,6 +112,20 @@ Should return:
 ```json
 {"status": "ok", "server": "github-mcp-server", "version": "1.0.0"}
 ```
+
+`/health` is intentionally left open so Railway's healthcheck can reach it — it exposes no data and runs no tools.
+
+To confirm the auth gate is live, open your `/mcp` URL **without** the key:
+```
+https://your-app.up.railway.app/mcp
+```
+
+Should return:
+```json
+{"error": "Forbidden"}
+```
+
+If you get `{"status": "ok", ...}` there instead, the auth token is not set — go back to Step 4.
 
 ---
 
@@ -109,7 +147,8 @@ Should return:
 
 ## Notes
 
-- The token is stored as a Railway environment variable — never committed to code
+- Both tokens are stored as Railway environment variables — never committed to code
+- `MCP_AUTH_TOKEN` is yours alone. Generate your own at deploy time; don't reuse a token from anyone else's deployment
 - `github_search_code` requires the repo to be indexed by GitHub (public repos index faster)
 - When updating an existing file with `github_create_or_update_file`, you must first get the file's SHA using `github_get_file` and pass it as the `sha` parameter
 - Rate limit: GitHub allows 5,000 API requests/hour for authenticated users
