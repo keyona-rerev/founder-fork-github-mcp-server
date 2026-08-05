@@ -216,7 +216,7 @@ Start a **new conversation** in Claude and paste this in:
 - Never use your `GITHUB_TOKEN` as your `MCP_AUTH_TOKEN`. It travels in a URL, which means browser history and request logs — a real GitHub credential must never go there
 - Rotating either token means updating it in Railway. Rotating `MCP_AUTH_TOKEN` also means updating your Claude connector URL, since the key lives in the URL. Rotate it if it's ever exposed in a chat, a repo, or a screenshot
 - `github_search_code` requires the repo to be indexed by GitHub (public repos index faster)
-- When updating an existing file with `github_create_or_update_file`, you must first get the file's SHA using `github_get_file` and pass it as the `sha` parameter
+- When updating an existing file with `github_create_or_update_file`, you must first get the file's SHA using `github_get_file` and pass it as the `sha` parameter — or use `github_patch_file`, which handles the SHA for you and only needs the exact text you're changing
 - Rate limit: GitHub allows 5,000 API requests/hour for authenticated users
 
 ---
@@ -232,6 +232,7 @@ Reference list of everything Claude can do once the connector is live.
 - `github_list_directory` — browse repo directory structure
 - `github_get_tree` — get full recursive file tree
 - `github_create_or_update_file` — create or edit files and commit
+- `github_patch_file` — edit part of a file by exact string replacement, no SHA needed
 - `github_list_commits` — list commits on a branch
 - `github_list_branches` — list branches
 
