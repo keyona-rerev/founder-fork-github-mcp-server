@@ -49,26 +49,19 @@ Fork this repository to your own GitHub account (click **Fork** at the top right
 
 ## Step 3 — Generate your auth token
 
-**This is not your GitHub token from Step 1.** This is a brand new random string that you make up. Nobody issues it to you.
+This is not your GitHub token from Step 1. It's a random string you make up. Nobody issues it to you and it has nothing to do with GitHub.
 
-Here's why it exists: your Railway URL will be public and its name is guessable. Your server holds a GitHub token with read and write access to your repos. Without a shared secret, anyone who finds that URL can commit files, create issues, and merge pull requests on your account. `MCP_AUTH_TOKEN` is the secret that stops that.
+Your Railway URL is public and its name is guessable, and your server holds a GitHub token that can write to your repos. This is the secret that stops a stranger who finds the URL from using it.
 
-Generate one:
-```
-openssl rand -hex 32
-```
-(On Windows, run this in Git Bash or WSL. Any long random string works — you don't have to use `openssl`.)
+Go to **https://www.random.org/strings/** and set the form to:
 
-You'll get something like:
-```
-7f3a9c1e4b8d05a2f6e93c7b104d8fa25e0b6c39d7148af52b93e6c01da874f2
-```
+- Generate **1** random string
+- Each string **32** characters long
+- Tick all three character types: numeric digits, uppercase letters, lowercase letters
 
-Copy it somewhere you can get to it in the next two steps — you'll paste it into Railway in Step 4 and into your Claude connector URL in Step 5. It has to match exactly in both places.
+Click **Get Strings** and copy what it gives you.
 
-**Do not use your GitHub token as this value.** It would technically work, but this token travels in a URL — which means it lands in browser history and request logs. Never put a real GitHub credential there.
-
-**Keep this token private.** Anyone with it can use your MCP server as if they were you. If it's ever exposed — pasted into a chat, committed to a repo, shared in a screenshot — generate a new one, update the Railway variable, and update your connector URL.
+Save it somewhere you can get back to. You'll paste it into Railway in Step 4 and into your Claude connector URL in Step 5, and it has to match exactly in both places.
 
 ---
 
@@ -111,7 +104,7 @@ github-mcp-server-production-4abf.up.railway.app
    ```
    Filled in, that looks like:
    ```
-   https://github-mcp-server-production-4abf.up.railway.app/mcp?key=7f3a9c1e4b8d05a2f6e93c7b104d8fa25e0b6c39d7148af52b93e6c01da874f2
+   https://github-mcp-server-production-4abf.up.railway.app/mcp?key=7f3a9c1e4b8d05a2f6e93c7b104d8fa2
    ```
    No space before `?key=`, and paste the token whole — a truncated paste is the most common cause of a 403 later.
 4. Save — the connector should show 20 tools, grouped into 15 read-only and 5 write/delete
@@ -220,7 +213,8 @@ Start a **new conversation** in Claude and paste this in:
 
 - Both tokens are stored as Railway environment variables — never committed to code
 - `MCP_AUTH_TOKEN` is yours alone. Generate your own at deploy time; don't reuse a token from anyone else's deployment
-- Rotating either token means updating it in Railway. Rotating `MCP_AUTH_TOKEN` also means updating your Claude connector URL, since the key lives in the URL
+- Never use your `GITHUB_TOKEN` as your `MCP_AUTH_TOKEN`. It travels in a URL, which means browser history and request logs — a real GitHub credential must never go there
+- Rotating either token means updating it in Railway. Rotating `MCP_AUTH_TOKEN` also means updating your Claude connector URL, since the key lives in the URL. Rotate it if it's ever exposed in a chat, a repo, or a screenshot
 - `github_search_code` requires the repo to be indexed by GitHub (public repos index faster)
 - When updating an existing file with `github_create_or_update_file`, you must first get the file's SHA using `github_get_file` and pass it as the `sha` parameter
 - Rate limit: GitHub allows 5,000 API requests/hour for authenticated users
