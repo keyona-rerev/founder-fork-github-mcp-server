@@ -240,6 +240,8 @@ Args:
   - sha: Required when UPDATING an existing file — the blob SHA of the file being replaced
   - branch: Branch to commit to (default: repo's default branch)
 
+Note: this REPLACES the entire file. To change part of a large file, use github_patch_file instead.
+
 Returns: Commit info and file metadata including new blob_sha for future updates.`,
       inputSchema: z.object({
         owner: z.string(),
@@ -263,6 +265,114 @@ Returns: Commit info and file metadata including new blob_sha for future updates
         body
       );
       return { content: [{ type: "text", text: truncate(toText(data)) }] };
+    }
+  );
+
+  // Patch file — targeted string replacement without resending the whole file
+  server.registerTool(
+    "github_patch_file",
+    {
+      title: "Patch File",
+      description: `Edit an existing file by replacing exact strings. Does NOT require sending the
+whole file back, and does NOT require a SHA — both are handled internally.
+
+Use this instead of github_create_or_update_file whenever you are changing part of a file
+that already exists. Only use create_or_update_file for brand new files or full rewrites.
+
+Args:
+  - owner: Repository owner
+  - repo: Repository name
+  - path: File path within the repo
+  - edits: Array of { old_str, new_str }. Each old_str must appear EXACTLY ONCE in the file.
+           Applied in order. Use new_str: "" to delete.
+  - message: Commit message
+  - branch: Branch to commit to (default: repo's default branch)
+
+All edits are validated before anything is committed. If any old_str is missing or appears
+more than once, the whole call is rejected and the file is left untouched. When an old_str
+is not unique, add surrounding lines until it is.
+
+Returns: Commit info, new blob_sha, and a per-edit summary of bytes changed.`,
+      inputSchema: z.object({
+        owner: z.string(),
+        repo: z.string(),
+        path: z.string().describe("File path within the repo"),
+        edits: z
+          .array(
+            z.object({
+              old_str: z.string().min(1).describe("Exact text to find. Must be unique in the file."),
+              new_str: z.string().describe("Replacement text. Empty string deletes."),
+            })
+          )
+          .min(1)
+          .describe("Edits applied in order"),
+        message: z.string().describe("Commit message"),
+        branch: z.string().optional().describe("Target branch"),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ owner, repo, path, edits, message, branch }) => {
+      const query = branch ? `?ref=${encodeURIComponent(branch)}` : "";
+      const file = await githubRequest<FileContent>(
+        `/repos/${owner}/${repo}/contents/${path}${query}`
+      );
+
+      if (Array.isArray(file) || file.type !== "file") {
+        throw new Error(`${path} is not a file. Use github_list_directory to inspect it.`);
+      }
+      if (!file.content || file.encoding !== "base64") {
+        throw new Error(
+          `${path} is ${file.size} bytes. Files over 1MB return no content from the GitHub contents API. Use github_create_or_update_file instead.`
+        );
+      }
+
+      const before = Buffer.from(file.content.replace(/\n/g, ""), "base64").toString("utf-8");
+      let working = before;
+      const applied: string[] = [];
+
+      edits.forEach((edit, i) => {
+        const count = working.split(edit.old_str).length - 1;
+        if (count === 0) {
+          throw new Error(
+            `Edit ${i + 1} of ${edits.length}: old_str not found in ${path}. Nothing was committed. Re-read the file — it may have changed, or whitespace may differ.`
+          );
+        }
+        if (count > 1) {
+          throw new Error(
+            `Edit ${i + 1} of ${edits.length}: old_str appears ${count} times in ${path} and must be unique. Nothing was committed. Add surrounding lines until the match is unique.`
+          );
+        }
+        const delta = edit.new_str.length - edit.old_str.length;
+        working = working.replace(edit.old_str, () => edit.new_str);
+        applied.push(`edit ${i + 1}: ${delta >= 0 ? "+" : ""}${delta} chars`);
+      });
+
+      if (working === before) {
+        throw new Error(`No change produced in ${path}. Nothing was committed.`);
+      }
+
+      const body: Record<string, unknown> = {
+        message,
+        content: Buffer.from(working, "utf-8").toString("base64"),
+        sha: file.sha,
+      };
+      if (branch) body.branch = branch;
+
+      const data = await githubRequest<Record<string, unknown>>(
+        `/repos/${owner}/${repo}/contents/${path}`,
+        "PUT",
+        body
+      );
+
+      const summary = {
+        path,
+        edits_applied: edits.length,
+        bytes_before: Buffer.byteLength(before, "utf-8"),
+        bytes_after: Buffer.byteLength(working, "utf-8"),
+        detail: applied,
+        commit: data,
+      };
+      return { content: [{ type: "text", text: truncate(toText(summary)) }] };
     }
   );
 
